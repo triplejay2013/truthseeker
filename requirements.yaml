@@ -1,0 +1,7 @@
+accelerate
+pandas
+scikit-learn
+transformers
+datasets
+torch
+ipykernel
