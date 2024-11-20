@@ -191,33 +191,34 @@ def train(train_dataset, test_dataset, valid_dataset, out: str):
 sia = SentimentIntensityAnalyzer()
 _model = DistilBertModel.from_pretrained('distilbert-base-uncased')
 
-def extract_features(tweets):
-    if torch.cuda.is_available():
-        device = torch.cuda.current_device()
-        _model.to(device)
+def get_statement_embeddings(statements):
+    embeddings = []
+    for statement in statements:
+        inputs = tokenizer(statement, padding=True, truncation=True, return_tensors="pt")
+        with torch.no_grad():
+            outputs = _model(**inputs)
+        embedding = outputs.last_hidden_state.mean(dim=1).numpy()
+        embeddings.append(embedding)
+    return np.concatenate(embeddings, axis=0)
 
-    tweet_embeddings = []
+def extract_features(tweets):
     sentiments = []
-    
+    tweet_embeddings = []
+
     for tweet in tweets:
-        # Tokenize and get embeddings
+        # Sentiment analysis
+        sentiment_score = sia.polarity_scores(tweet)['compound']
+        sentiments.append(sentiment_score)
+
+        # Tokenize the tweet and get embeddings
         inputs = tokenizer(tweet, padding=True, truncation=True, return_tensors="pt")
         with torch.no_grad():
             outputs = _model(**inputs)
-        
-        # Extract hidden states and perform mean pooling (average of token embeddings)
-        embedding = outputs.last_hidden_state.mean(dim=1).numpy()  # Mean pooling over the tokens
+        embedding = outputs.last_hidden_state.mean(dim=1).numpy()  # Mean pooling
         tweet_embeddings.append(embedding)
-        
-        # Sentiment score (VADER)
-        sentiment_score = sia.polarity_scores(tweet)['compound']
-        sentiments.append(sentiment_score)
-    
-    # Convert list of embeddings into a 2D array
+
     tweet_embeddings = np.concatenate(tweet_embeddings, axis=0)
-    
-    # Aggregate features (mean sentiment and mean embedding)
     avg_sentiment = np.mean(sentiments)
-    avg_embedding = np.mean(np.vstack(tweet_embeddings), axis=0)  # Shape: (768,)
-    
+    avg_embedding = np.mean(np.vstack(tweet_embeddings), axis=0)
+
     return avg_sentiment, avg_embedding
