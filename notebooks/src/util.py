@@ -200,12 +200,13 @@ def extract_features(tweets):
     sentiments = []
     
     for tweet in tweets:
-        # DistilBERT embeddings
+        # Tokenize and get embeddings
         inputs = tokenizer(tweet, padding=True, truncation=True, return_tensors="pt")
         with torch.no_grad():
             outputs = _model(**inputs)
-        embedding = outputs.last_hidden_state.mean(dim=1).numpy()  # Aggregate token embeddings (mean pooling)
         
+        # Extract hidden states and perform mean pooling (average of token embeddings)
+        embedding = outputs.last_hidden_state.mean(dim=1).numpy()  # Mean pooling over the tokens
         tweet_embeddings.append(embedding)
         
         # Sentiment score (VADER)
@@ -215,5 +216,8 @@ def extract_features(tweets):
     # Convert list of embeddings into a 2D array
     tweet_embeddings = np.concatenate(tweet_embeddings, axis=0)
     
-    # Combine embeddings with sentiment as features
-    return np.hstack([tweet_embeddings, np.array(sentiments).reshape(-1, 1)])
+    # Aggregate features (mean sentiment and mean embedding)
+    avg_sentiment = np.mean(sentiments)
+    avg_embedding = np.mean(np.vstack(tweet_embeddings), axis=0)  # Shape: (768,)
+    
+    return avg_sentiment, avg_embedding
