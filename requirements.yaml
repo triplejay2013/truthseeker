@@ -5,3 +5,5 @@ transformers
 datasets
 torch
 ipykernel
+matplotlib
+jupyterlab
