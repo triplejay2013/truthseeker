@@ -1,0 +1,288 @@
+\documentclass[14]{article}
+\usepackage{graphicx} % Required for inserting images
+\usepackage[]{ACL2023}
+
+\title{"Truth"-seeker Dataset Exploration and Analysis}
+\author{Justin Johnson}
+\date{November 2024}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The proliferation of misinformation on social media platforms has created a pressing need for automated systems to assess the truthfulness of online content. This paper critiques and recreates the exploration of \citealt{truthseeker} in the use of machine learning models, specifically the DistilBERT model \cite{distilbert}, to predict the "truthfulness" or "consensus" of tweets in relation to a given statement. I introduce a methodology that incorporates both the tweet content and associated statement into a single sentence, which is then used to train the model. My experiments focus on training the model to predict the agreement between a tweet and a statement based on majority consensus labels derived from human annotators. I discuss the implications of my findings, suggest potential improvements, and propose directions for future research in the domain of automatic truthfulness detection in online content.
+\end{abstract}
+
+\section{Introduction}
+
+In recent years, the need for automated systems to assess the truthfulness of online content has become increasingly urgent. With the rise of social media, misinformation, and disinformation have posed significant challenges for both individuals and institutions. Identifying whether a statement made in a post is accurate or false is a critical task in mitigating the spread of misinformation. This paper critiques the exploration done for this problem \cite{truthseeker} by utilizing machine learning models, particularly the DistilBERT model \cite{distilbert}, to predict the "truthfulness" of a tweet based on its content.
+
+In this work, I focus on recreating the experiment of training a model to determine the agreement between a tweet and a given statement, which I prefer to refer to as "consensus". The dataset used in this study comprises tweets and associated statements, along with labels indicating whether the tweet agrees with the statement, derived from human consensus. I explore various preprocessing strategies to prepare the data and evaluate the effectiveness of these strategies through model accuracy.
+
+\section{Background \& Related Works}
+
+The work presented in this paper is situated within the broader context of research on fact-checking and sentiment analysis. Below, I summarize the relevant literature and its connection to my study.
+
+\subsection{Fact-Checking Practices}
+\citet{fact_check_fact_checker} conducted an extensive data-driven examination of fact-checking practices across four prominent fact-checkers: Snopes, PolitiFact, Logically, and the Australian Associated Press FactCheck. Their study analyzed over 22,000 fact-checking articles, focusing on agreement and variation in verdicts, and noted that major events, such as the COVID-19 pandemic and presidential elections, significantly impacted fact-checking frequency. This work relates closely to my research as it highlights the intricacies of aggregating consensus from multiple fact-checkers, a concept central to the "consensus" (or "ground truth" as the Truthseeker Dataset authors suggested) labels used in this paper.
+
+\subsection{Sentiment Analysis in Text}
+The field of sentiment analysis has been a critical component of natural language processing research. \citet{sentiment_opinion_mining} provide a literature survey emphasizing the role of sentiment analysis in mining opinions from unstructured textual data, particularly from customer reviews on e-commerce platforms. They underscore the challenges in identifying emotions and opinions within text data, which directly aligns with my exploration of sentiment analysis as a tool to determine the agreement between tweets and statements. 
+
+\subsection{Deep Learning for Sentiment Analysis}
+Building on sentiment analysis, \citet{sentiment_deep_learning} explore the application of deep learning methods, particularly CNN-LSTM architectures with pre-trained embeddings, to classify sentiments in large-scale unstructured data such as social media content.
+
+\subsection{Sentiment Analysis on Twitter}
+\citet{twitter_sentiment_analysis} offer a survey of sentiment analysis methodologies specifically targeting Twitter data. They review machine learning and lexicon-based approaches, discussing their applicability to highly unstructured and heterogeneous opinion streams on social platforms.
+
+\subsection{Relevance to This Work}
+The studies discussed above collectively inform the methodologies and tools applied in my research. While fact-checking studies like \citet{fact_check_fact_checker} inspire the conceptual framing of consensus labels, sentiment analysis research, particularly from \citet{sentiment_opinion_mining} and \citet{twitter_sentiment_analysis}, demonstrates the feasibility and challenges of analyzing sentiment and opinions in text. Moreover, \citet{sentiment_deep_learning}'s focus on deep learning corroborates the suitability of transformer-based models, such as DistilBERT, for handling these tasks.
+
+\section{Truthseeker Dataset}
+
+The TruthSeeker dataset paper presents a large-scale, crowd-sourced dataset for the purpose of detecting real vs. fake content in social media, especially focused on tweets. The dataset is designed to help in the development of models for fact-checking and truth detection by associating statements with a set of tweets discussing them. These tweets are labeled based on whether they agree with or refute the truth of the statement they discuss.
+
+\subsection{Terminology}
+The TruthSeeker Dataset paper \cite{truthseeker} introduces an interesting and novel dataset for assessing the truthfulness of statements based on social media content. This exploration is interesting, because the harms of misinformation are real, so investigating and creating systems to combat it are critical. However, some aspects of its terminology could be critiqued for clarity, and consistency, to ensure we are truly achieving those aims:
+
+\begin{itemize}
+    \item \textbf{Ambiguity} in the Use of "Truth": One of the main issues with the terminology in the paper is the reliance on the term "truth" to describe the dataset’s classification goal. The concept of "truth" is inherently complex and multifaceted, particularly in the context of social media, where claims are often subjective, context-dependent, and influenced by individual beliefs. While the paper aims to classify statements as "true" or "false," this binary simplification overlooks the nuances of truthfulness.
+    \item \textbf{Over-reliance} on "Ground Truth": The concept of "ground truth" is frequently used throughout the paper to refer to the verified accuracy of statements, usually provided by professional fact-checkers, who often don't even agree with each other \cite{fact_check_fact_checker}. While this is a standard approach in the machine learning and information retrieval fields, the authors do not sufficiently explore the limitations of using fact-checker labels as the "ground truth." Fact-checking itself can be subjective, particularly when different organizations use varying methodologies or interpret evidence differently. By equating "ground truth" with "absolute truth," the paper risks oversimplifying the complexities inherent in fact-checking, and may give the false impression that a single "truth" exists for every statement. A more cautious approach would involve acknowledging the limitations of the fact-checking process and presenting "ground truth" as a best estimate.
+    \item "Agreement" as a Label: The use of "agreement" as a label for statements in the TruthSeeker Dataset also presents challenges. The authors rely on crowd-sourced labels for "agreement" or "disagreement" with a statement (to be clear, this nomenclature in this particular instance isn't problematic, it is a conflated term which is also used with the "ground truth" value to determine truthfulness), which may conflate subjective perception with objective truth. The labels from crowd-sourcing platforms often reflect the opinions or biases of the participants, rather than a definitive measure of factual accuracy. While crowd-sourcing can be a valuable method for gathering diverse perspectives, it introduces variability and uncertainty. The term "agreement" might be better defined as "consensus" or "alignment" with fact-checker judgments, which would better distinguish between subjective opinion and objective factual assessment.
+\end{itemize}
+
+Clearer definitions of key terms, a more nuanced discussion of truth and agreement, and a careful consideration of the limitations inherent in the dataset would improve the paper's impact and readability, ensuring that readers can better understand and apply the dataset in the broader context of truth verification and social media analysis.
+
+\subsection{Data Preprocessing Recap}
+
+The TruthSeeker dataset was created using 700 real and 700 fake news articles from PolitiFact. For each article, 2-5 manually generated keywords were used to gather tweets via the Twitter API. Automated keyword generation methods such as PKE, RAKE, and YAKE proved ineffective, either returning too few or too many results. Thus, manual keyword generation was preferred, resulting in a dataset of 186,000 tweets (133 tweets per article on average).
+
+\subsection{Crowdsourcing and Labeling}
+
+Tweets were labeled using Amazon Mechanical Turk (MTurk), with tasks assigned to Master Turkers to assess each tweet's agreement with the source statement. The agreement levels were labeled as: \textit{True}, \textit{False}, \textit{Mostly True}, and \textit{Mostly False}. Each task was completed by three independent Turkers for accuracy.
+
+\subsection{Preprocessing}
+
+After data collection, rows with a "NO MAJORITY" or "Unrelated" label were removed. A "ground truth" column was created based on the majority answer to determine the truthfulness of each tweet. The final dataset contains 150,000 unique tweets and 1,400 statements, balanced evenly between true and false statements.
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|c|c|}
+    \hline
+    \textbf{Statement (T/F)} & \textbf{Majority Answer} \\
+    \hline
+    T & Agree \\
+    T & Disagree \\
+    T & Mostly Agree \\
+    T & Mostly Disagree \\
+    F & Agree \\
+    F & Disagree \\
+    F & Mostly Agree \\
+    F & Mostly Disagree \\
+    \hline
+    \end{tabular}
+    \caption{4-Label Conversion Truth Table.}
+    \label{tab:truth_table_4label}
+\end{table}
+
+\begin{table}[h!]
+    \centering
+    \begin{tabular}{|c|c|}
+    \hline
+    \textbf{Statement (T/F)} & \textbf{Majority Answer} \\
+    \hline
+    T & Agree \\
+    T & Disagree \\
+    F & Agree \\
+    F & Disagree \\
+    \hline
+    \end{tabular}
+    \caption{2-Label Conversion Truth Table.}
+    \label{tab:truth_table_2label}
+\end{table}
+
+\subsection{Additions \& Changes}
+
+Initially, I focused on training the model using the "consensus" labels, which were derived by matching the majority answer with the "ground truth", as shown in Table \ref{tab:truth_table_4label} and Table \ref{tab:truth_table_2label}. However, after further analysis, I decided to shift my approach and use the majority answers directly as the target labels. This approach yielded significantly better results.
+
+In addition to the methodology outlined by \citet{truthseeker}, I implemented a data splitting strategy that ensured unique statements in each set, guaranteeing that no statements from the validation or test sets appeared in the training set. This helped prevent data leakage and ensured a cleaner evaluation process.
+
+To enhance the model's training, I also introduced a new feature column that combined the "ground truth" value, the statement, and the tweet into a single sentence. This new feature allowed the model to better capture the relationship between the tweet and the statement, improving its ability to assess agreement.
+
+Finally, I converted this enriched DataFrame into a `datasets` Dataset object for compatibility with the `transformers` model.
+
+\section{Evaluation}
+
+My intent for exploring this dataset \cite{truthseeker} was to try and recreate their experiment to the best of my ability. After doing so, I would then focus on improvements and other explorations. Due to the time constraints I have for researching and submitting this as an assignment, I have not yet explored everything I would like to explore. The following details what I have covered so far.
+
+\subsection{Experiment 1: Consensus}
+
+The goal of this first attempt was to train the "Agreement" or "truthfulness" label. In my code, I referred to this label as "consensus" instead, in an effort to explore new terminology. Throughout these experiments, I focused primarily on accuracy as my metric for improvement and evaluation. I did not explore other alternatives, which could be a worthwhile direction for future work.
+
+\paragraph{Task \& Procedure}
+
+Using information from Tables \ref{tab:truth_table_4label} and \ref{tab:truth_table_2label}, I extracted the respective majority answers and compared them against the "ground truth" as shown in those tables to derive a consensus. I then used DistilBERT \cite{distilbert} to fine-tune and train the model on these consensus labels.
+
+It is important to note that, unlike all other experiments in this paper, for this particular experiment I did not blend statements and tweets. Instead, I focused solely on the tweets and trained the model to determine "Truth" (or as I prefer to call it, "consensus") based on the tweet content.
+
+\paragraph{Results}
+
+This approach resulted in a relatively poor performance, achieving only about a 30\% accuracy. This outcome can likely be attributed to the fact that the tweets alone, without the full context of the associated statements, may lack sufficient information for accurate agreement prediction. Tweets often contain ambiguous or incomplete information, which likely led to the lower accuracy in classifying them as agreeing or disagreeing with the statements.
+
+I did not attempt to rerun this particular experiment with the proper preprocessing steps I later developed and used. If I have the time and opportunity to do so, I will replace this comment with a new experiment section detailing that endeavor.
+
+\subsection{Experiment 2: 4-class Classification}
+
+The primary goal of this endeavor was to train on a 4-way classification task. The targets were values of "True", "Mostly True", "False", "Mostly False".
+
+\paragraph{Task \& Procedure}
+
+This experiment was an improvement on the prior experiment, in that I started preprocessing the data "properly". I included the statement, tweet, and "ground truth" values in a single sentence, which was then fed to my DistilBERT \cite{distilbert} model. I then trained with the "majority\_answer" as my label, in order to determine how well I could predict if a tweet agreed with a given statement.
+
+I also played around with parameters to try and \textit{squeeze} out some extra performance. For example, even with a relatively small learning rate (1e-5), I was getting oscillating loss (high to low very rapidly). I had to reduce this to 1e-8 to get the chart seen in Figure \ref{fig:4class_loss}.
+
+But even so, I reached a stable accuracy value after a single epoch, and didn't see much improvement upon changing any of these other parameters.
+
+\paragraph{Results}
+
+This experiment resulted in similar results achieved by \citet{truthseeker} 's team,
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.5\textwidth]{imgs/4class_loss.png}
+    \caption{4 Label Class Evaluation Loss}
+    \label{fig:4class_loss}
+\end{figure}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.5\textwidth]{imgs/4class_accuracy.png}
+    \caption{4 Label Class Evaluation Accuracy}
+    \label{fig:4class_accuracy}
+\end{figure}
+
+achieving nearly 49\% accuracy on the test and validation sets. I believe that this had a hard time making predictions, mostly because there is no real difference between "True" and "Mostly True". Those are extremely subjective ideas, especially considering how this team crowd-sourced the labels.
+
+\subsection{Experiment 3: 2-class Classification}
+
+This was a two-way classification task, between "True" and "False"
+
+\paragraph{Task \& Procedure}
+
+This experiment closely shadows the previous one, except the focus was binary classification. 
+For multi-class classification in the prior experiment, I swapped to use CategoricalLoss instead of BinaryCrossEntropyLoss. Otherwise the preprocessing and analysis remained fairly similar.
+
+\paragraph{Results}
+
+This experiment also resulted in similiar outcomes as \citet{truthseeker}. I achieved about 96\% accuracy.
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.5\textwidth]{imgs/2class_loss.png}
+    \caption{2 Label Class Evaluation Loss}
+    \label{fig:2class_loss}
+\end{figure}
+
+\begin{figure}[ht]
+    \centering
+    \includegraphics[width=0.5\textwidth]{imgs/2class_accuracy.png}
+    \caption{2 Label Class Evaluation Accuracy}
+    \label{fig:2class_accuracy}
+\end{figure}
+
+This also had small variation when I attempted to adjust parameters. After a single epoch, the model didn't learn much more it would seem. But it was able to properly predict the majority answer much better than the prior experiment.
+
+Both this and the prior experiment could be used in a prediction pipeline to do what my 1st experiment attempted to do. Since the agreement score is fairly well learned, I could then just match that with the provided "ground truth" statement (supposing that it is supplied) to determine "truth". Such a process should result in similar accuracies, since this is a matter of simple computation and not AI learning.
+
+\subsection{Experiment 4: Sentiment Analysis}
+
+In this experiment, I explored the role of sentiment analysis in determining the agreement between tweets and statements, with a focus on attempting to ascertain truth with only the contents of a tweet. I used two methods: DistilBERT \cite{distilbert} for deep learning-based sentiment analysis, and VADER (Valence Aware Dictionary and sEntiment Reasoner) \cite{vader} for lexicon-based sentiment extraction. The goal was to investigate whether sentiment, in the form of polarity scores, could be leveraged to predict how well a tweet agreed with a given statement.
+
+\paragraph{Task \& Procedure}
+
+I found that using VADER's \cite{vader} sentiment analysis output helped me quantify the sentiment of each tweet, which I then compared to the sentiment of the corresponding statement. However, I also realized that while sentiment scores from VADER and DistilBERT \cite{distilbert} provided useful information about the emotional tone of tweets, they did not directly correlate with the agreement between tweets and statements in terms of "truth" or consensus.
+
+\paragraph{Results}
+
+\begin{table}[h!]
+\centering
+\resizebox{\linewidth}{!}{
+\begin{tabular}{|l|c|c|c|c|}
+\hline
+\textbf{Class} & \textbf{Precision} & \textbf{Recall} & \textbf{F1-Score} & \textbf{Support} \\
+\hline
+False & 0.74 & 0.61 & 0.67 & 41 \\
+True  & 0.69 & 0.80 & 0.74 & 45 \\
+\hline
+Accuracy & \multicolumn{4}{|c|}{0.71 (86)} \\
+Macro avg & 0.71 & 0.70 & 0.70 & 86 \\
+Weighted avg & 0.71 & 0.71 & 0.71 & 86 \\
+\hline
+\end{tabular}
+}
+\caption{Sentiment Analysis Classification Report}
+\end{table}
+
+Precision measures the proportion of positive predictions among all positive predictions. In this case, the model performed slightly better when predicting "False" sentiment (74\% precision) compared to "True" sentiment (69\% precision). This suggests that the model is more reliable in predicting negative sentiment than positive sentiment. However, the difference is small, indicating a balanced performance across both classes.
+
+Recall measures the proportion of actual positives correctly identified by the model. The model performed better in identifying positive sentiment ("True") with a recall of 80\%, compared to negative sentiment ("False") with a recall of 61\%. This indicates that the model is more sensitive to positive sentiment, but misses more negative sentiment instances.
+
+The F1-score is a harmonic mean of precision and recall. The model achieved a slightly better F1-score for "True" sentiment (0.74) than for "False" sentiment (0.67). This suggests that the model is more balanced in its performance when predicting positive sentiment.
+
+The overall accuracy of the model is 71\%, meaning that 71\% of the instances in the test set were correctly classified. This indicates a decent level of overall performance, though there is still room for improvement.
+
+This analysis pointed to the fact that sentiment alone—whether positive or negative—was not enough to predict whether a tweet would agree with a statement. It was a valuable exploratory step, but I concluded that sentiment needed to be combined with other features \cite{twitter_sentiment_analysis}, such as factual accuracy or opinion extraction \cite{sentiment_opinion_mining}, to improve the model's performance in predicting agreement. Future work could explore how these features could be integrated to better assess the relationship between tweet sentiment and statement agreement.
+
+\section{Implications}
+
+The results and methods discussed in this paper carry several important implications for both the field and the broader community. These should be carefully considered in future research and application:
+
+\begin{itemize}
+    \item \textbf{Potential for Bias:} The reliance on crowd-sourced data to generate majority answers and labels, as described in this study, could unintentionally introduce biases based on the demographics or perspectives of those providing the data. If not appropriately mitigated, such biases may distort the accuracy and fairness of the consensus reached, leading to misclassifications that affect decision-making processes in real-world applications.
+    
+    \item \textbf{Misuse in Sensitive Areas:} The ability to predict agreement between statements and tweets could be applied in contexts where sensitive or controversial topics are discussed. Misuse of such tools to enforce specific viewpoints or manipulate public opinion could be harmful. There is a risk of algorithmic amplification of polarized opinions, especially in politically charged or socially sensitive areas.
+    
+    \item \textbf{Impact on Public Discourse:} The results of this study may also influence public discourse by automating content moderation or sentiment analysis. While such tools have the potential to streamline information processing, they could inadvertently silence marginalized voices or prevent meaningful debate if not carefully calibrated. This may contribute to echo chambers or the suppression of alternative viewpoints.
+    
+    \item \textbf{Vulnerabilities in System Design:} The approach used in this study may be vulnerable to adversarial attacks, such as manipulation of the input data (e.g., tweets or statements) to achieve a desired outcome. For instance, adversarial actors could craft specific tweets that align with a false consensus, thus manipulating the model’s predictions. Proper safeguards and testing for robustness against such attacks are essential.
+    
+    \item \textbf{Ethical Considerations:} As AI-based systems are increasingly integrated into decision-making processes, it is critical to ensure that the systems are transparent and accountable. This study showcases the need for clear ethical guidelines regarding the use of AI models for social or political applications. Transparency in how consensus is determined and ensuring that no harmful consequences arise from mislabeling or misunderstanding public opinion are essential to the responsible development of such systems.
+\end{itemize}
+
+\section{Future Research \& Work}
+
+One potential avenue for future research involves exploring alternative methods for determining "consensus." In this study, \citet{vader}'s sentiment analysis tool could be utilized to determine agreement between statements and tweets, providing an automated approach to calculating consensus. This contrasts with the crowdsourced method used in \citet{truthseeker}, which relied on human annotators via Amazon Mechanical Turk. While \citet{truthseeker} presents an interesting and widely applicable method, the reliability of crowdsourced labels can be questioned due to inconsistencies across annotators \cite{fact_check_fact_checker}. 
+
+In contrast, \citet{vader} claims to outperform humans in sentiment classification, particularly on social media data, and while sentiment is not synonymous with agreeableness, it is worth investigating whether VADER could provide a more scalable and efficient solution for this task. A comparison between crowdsourced consensus and VADER's output could reveal insights into the strengths and limitations of both approaches, offering directions for improving automated consensus detection in future work.
+
+Additional future research directions include:
+
+\begin{itemize}
+    \item \textbf{Exploring Other Sentiment Tools:} Besides VADER, other sentiment analysis models like BERT-based classifiers or RoBERTa \cite{roberta} could be tested to see if they can improve consensus prediction, particularly when trained on specific tweet data and statements.
+    
+    \item \textbf{Evaluation of Model Robustness:} It would be important to evaluate the robustness of the models trained for consensus detection. This includes testing for adversarial attacks, where misleading tweets could be crafted to manipulate the predicted consensus, potentially undermining the validity of automated systems.
+    
+    \item \textbf{Multimodal Data Fusion:} Future research could consider incorporating both tweet text and associated metadata (e.g., author sentiment, number of likes/shares, and time posted) as additional input features for consensus prediction. Combining multiple data sources may improve model performance and better reflect the real-world factors that influence agreement.
+    
+    \item \textbf{Expanding Consensus Metrics:} While this research primarily focused on binary classification (i.e., agreement or disagreement), a more nuanced approach could be explored. For example, determining the strength or intensity of agreement, not just a simple binary response, could lead to more useful and insightful predictions in various contexts, such as political discourse or product reviews.
+    
+    \item \textbf{Cross-Domain Applications:} Exploring the application of consensus prediction methods in other domains, such as fake news detection, scientific consensus, or public health, could broaden the impact of this research. Each domain might require a slightly different approach, and adapting consensus prediction models could provide valuable contributions in various fields.
+\end{itemize}
+
+These avenues would help further refine the methodologies for automated consensus detection, and could have practical applications in real-time data processing, sentiment tracking, and improving public discourse analysis.
+
+\section*{Conclusion}
+
+The primary goals of this research were to recreate the Truthseeker experiment, explore sentiment analysis as a tool for determining consensus, and investigate potential improvements to their methods in terms of methodology, terminology, and process. In recreating the Truthseeker experiment, I focused on using sentiment analysis techniques, specifically VADER and DistilBERT, to classify tweets and statements according to their agreement with a given statement.
+
+While the experiments showed promising results, it became clear that further refinement is needed, particularly in integrating sentiment analysis models with consensus detection and improving the accuracy of the predictions. One key area for future work is exploring how sentiment models, like VADER, could outperform or complement human-sourced consensus labels.
+
+These ideas open the door to improving the methodology behind consensus detection and sentiment analysis, with the potential for future advancements in areas such as fake news detection, social media monitoring, and automated opinion analysis. Future work should further refine the model, explore new avenues for improving accuracy, and continue to examine the role of sentiment analysis in determining agreement in textual data.
+
+\nocite{bert}
+
+\bibliography{custom}
+\bibliographystyle{acl_natbib}
+
+\end{document}
